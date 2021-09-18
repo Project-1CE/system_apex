@@ -143,6 +143,7 @@ Result<void> configureLoopDevice(const int device_fd, const std::string& target,
                                  const int32_t imageOffset,
                                  const size_t imageSize) {
   static bool useLoopConfigure;
+  static bool use_buffered_IO;
   static std::once_flag onceFlag;
   std::call_once(onceFlag, [&]() {
     // LOOP_CONFIGURE is a new ioctl in Linux 5.8 (and backported in Android
@@ -178,6 +179,7 @@ Result<void> configureLoopDevice(const int device_fd, const std::string& target,
         return Error(saved_errno) << "Failed to open " << target;
     }
     LOG(WARNING) << "Fallback to buffered I/O for " << target;
+    use_buffered_IO = true;
     target_fd.reset(open(target.c_str(), O_RDONLY | O_CLOEXEC));
     if (target_fd.get() == -1) {
       return ErrnoError() << "Failed to open " << target;
@@ -193,7 +195,7 @@ Result<void> configureLoopDevice(const int device_fd, const std::string& target,
   if (useLoopConfigure) {
     struct loop_config config;
     memset(&config, 0, sizeof(config));
-    li.lo_flags |= LO_FLAGS_DIRECT_IO;
+    if (!use_buffered_IO) li.lo_flags |= LO_FLAGS_DIRECT_IO;
     config.fd = target_fd.get();
     config.info = li;
     config.block_size = 4096;
